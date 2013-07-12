@@ -96,9 +96,13 @@ object Build extends Build {
 
   lazy val sprayOsgi = Project("spray-osgi", file("spray-osgi"))
     .dependsOn(sprayCaching, sprayCan, sprayClient, sprayHttp, sprayHttpx, sprayIO, sprayRouting, sprayServlet, sprayTestKit, sprayUtil)
+
+//    Which of these three lines are correct (if any) to just simply run the SprayReferenceCopyAction during the build?
     .settings(sprayModuleSettings ++ seq(SprayReferenceCopyTask in Compile <<= SprayReferenceCopyAction): _*)
-    .settings(compile in Compile <<= compile in Compile dependsOn (ActorReferenceCopyTask in Compile): _*)
+    .settings(compile in Compile <<= compile in Compile dependsOn (SprayReferenceCopyTask in Compile): _*)
     .settings(seq(copyResources in Compile <<=  Seq(SprayReferenceCopyTask, SprayReferenceCopyAction)): _*)
+
+
     .settings(osgiSettings(exports = Seq("akka.spray", "spray.caching", "spray.can", "spray.client", "spray.http", "spray.httpx", "spray.io", "spray.osgi", "spray.routing", "spray.servlet", "spray.testkit", "spray.util")): _*)
     .settings(libraryDependencies ++= compile(osgiCore, akkaSlf4j, akkaOsgi, tsConfig))
 
