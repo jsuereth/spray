@@ -1,5 +1,8 @@
+import com.typesafe.sbt.osgi.OsgiKeys
 import sbt._
 import Keys._
+import java.io.PrintWriter
+import scala._
 
 object Build extends Build {
   import BuildSettings._
@@ -16,7 +19,7 @@ object Build extends Build {
 
   lazy val root = Project("root",file("."))
     .aggregate(docs, examples, sprayCaching, sprayCan, sprayCanTests, sprayClient, sprayHttp, sprayHttpx,
-      sprayIO, sprayIOTests, sprayRouting, sprayRoutingTests, sprayServlet, sprayTestKit, sprayUtil)
+      sprayIO, sprayIOTests, sprayOsgi, sprayRouting, sprayRoutingTests, sprayServlet, sprayTestKit, sprayUtil)
     .settings(basicSettings: _*)
     .settings(noPublishing: _*)
 
@@ -91,6 +94,13 @@ object Build extends Build {
     .settings(noPublishing: _*)
     .settings(libraryDependencies ++= test(akkaActor, akkaTestKit, specs2, scalatest))
 
+  lazy val sprayOsgi = Project("spray-osgi", file("spray-osgi"))
+    .dependsOn(sprayCaching, sprayCan, sprayClient, sprayHttp, sprayHttpx, sprayIO, sprayRouting, sprayServlet, sprayTestKit, sprayUtil)
+    .settings(sprayModuleSettings ++ seq(SprayReferenceCopyTask in Compile <<= SprayReferenceCopyAction): _*)
+    .settings(compile in Compile <<= compile in Compile dependsOn (ActorReferenceCopyTask in Compile): _*)
+    .settings(seq(copyResources in Compile <<=  Seq(SprayReferenceCopyTask, SprayReferenceCopyAction)): _*)
+    .settings(osgiSettings(exports = Seq("akka.spray", "spray.caching", "spray.can", "spray.client", "spray.http", "spray.httpx", "spray.io", "spray.osgi", "spray.routing", "spray.servlet", "spray.testkit", "spray.util")): _*)
+    .settings(libraryDependencies ++= compile(osgiCore, akkaSlf4j, akkaOsgi, tsConfig))
 
   lazy val sprayRouting = Project("spray-routing", file("spray-routing"))
     .dependsOn(
@@ -217,7 +227,7 @@ object Build extends Build {
     )
 
   lazy val sprayRoutingExamples = Project("spray-routing-examples", file("examples/spray-routing"))
-    .aggregate(onJetty, onSprayCan, simpleRoutingApp)
+    .aggregate(onJetty, onSprayCan, onKaraf, simpleRoutingApp)
     .settings(exampleSettings: _*)
 
   lazy val onJetty = Project("on-jetty", file("examples/spray-routing/on-jetty"))
@@ -229,6 +239,15 @@ object Build extends Build {
       runtime(akkaSlf4j, logback) ++
       container(jettyWebApp, servlet30)
     )
+
+  lazy val onKaraf = Project("on-karaf", file("examples/spray-routing/on-karaf"))
+      .dependsOn(sprayOsgi, sprayCaching, sprayServlet, sprayRouting, sprayTestKit % "test")
+      .settings(sprayModuleSettings ++ Seq(OsgiKeys.bundleActivator := Option("spray.examples.Activator")) ++ Seq(OsgiKeys.exportPackage := Seq("spray.examples")): _*)
+      .settings(libraryDependencies ++=
+          compile(akkaActor) ++
+            test(specs2) ++
+            runtime(akkaSlf4j, logback)
+        )
 
   lazy val onSprayCan = Project("on-spray-can", file("examples/spray-routing/on-spray-can"))
     .dependsOn(sprayCaching, sprayCan, sprayRouting, sprayTestKit % "test")
@@ -259,4 +278,40 @@ object Build extends Build {
       runtime(akkaSlf4j, logback) ++
       container(jettyWebApp, servlet30)
     )
+
+
+  // -------------------------------------------------------------------------------------------------------------------
+  // Configuration copy tasks
+  // -------------------------------------------------------------------------------------------------------------------
+
+  val SprayReferenceCopyTask = TaskKey[Int]("hello", "Copy reference.conf from spray modules to spray-osgi")
+
+  val SprayReferenceCopyAction = (streams) map {
+    (s) =>
+      s.log.debug("Copying of the spray-routing reference.conf to spray-osgi")
+      (file("spray-osgi/src/main/resources")).mkdir()
+      if ((file("spray-osgi/src/main/resources/reference.conf")).exists) {
+        (file("spray-osgi/src/main/resources/reference.conf")).delete()
+      }
+      val projectReferencesToCopy = for (project <- projects.filter(p => !p.id.contains("test") && !p.id.contains("sample"))
+                                         if (file(project.base + "/src/main/resources/reference.conf")).exists()) yield project
+
+      val referencesFileToInclude = projectReferencesToCopy.map(project => {
+        copyFile(project.base + "/src/main/resources/reference.conf", "spray-osgi/src/main/resources/" + project.id + ".conf")
+        "include \"" + project.id + ".conf\""
+      })
+
+      val writer = new PrintWriter(file("spray-osgi/src/main/resources/reference.conf"))
+      writer.write(referencesFileToInclude.mkString("\n"))
+      writer.close()
+      s.log.info("Spray module reference.conf copied in spray-osgi")
+      projects.size
+  }
+
+  def copyFile(source: String, sink: String) {
+    val src = new java.io.File(source)
+    val dest = new java.io.File(sink)
+    new java.io.FileOutputStream(dest).getChannel.transferFrom(
+      new java.io.FileInputStream(src).getChannel, 0, Long.MaxValue)
+  }
 }

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<features xmlns="http://karaf.apache.org/xmlns/features/v1.2.0" name="io.spray.examples.karaf">
+    <feature name="io.spray.examples.karaf" version="${pom.version}">
+        <bundle>wrap:mvn:io.spray/on-karaf/1.1-M8-SNAPSHOT</bundle>
+
+        <bundle>mvn:com.typesafe.akka/akka-osgi_2.10/2.2-SNAPSHOT</bundle>
+        <bundle>mvn:com.typesafe/config/1.0.1</bundle>
+        <bundle>mvn:org.scala-lang/scala-library/2.10.0</bundle>
+        <bundle>wrap:mvn:io.spray/spray-osgi/1.1-M8-SNAPSHOT</bundle>
+        <bundle>mvn:org.parboiled/parboiled-core/1.1.5</bundle>
+        <bundle>wrap:mvn:com.chuusai/shapeless_2.10.0-RC5/1.2.3</bundle>
+        <bundle>wrap:mvn:io.spray/spray-caching/1.1-M8-SNAPSHOT</bundle>
+        <bundle>wrap:mvn:io.spray/spray-can/1.1-M8-SNAPSHOT</bundle>
+        <bundle>wrap:mvn:io.spray/spray-http/1.1-M8-SNAPSHOT</bundle>
+        <bundle>wrap:mvn:io.spray/spray-httpx/1.1-M8-SNAPSHOT</bundle>
+        <bundle>wrap:mvn:io.spray/spray-routing/1.1-M8-SNAPSHOT</bundle>
+        <bundle>wrap:mvn:io.spray/spray-util/1.1-M8-SNAPSHOT</bundle>
+        <bundle>wrap:mvn:io.spray/spray-json_2.10/1.2.4</bundle>
+    </feature>
+</features>

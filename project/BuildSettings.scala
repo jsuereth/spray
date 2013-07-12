@@ -5,6 +5,8 @@ import com.typesafe.sbt.SbtScalariform.ScalariformKeys
 import sbtassembly.Plugin.AssemblyKeys._
 import sbtassembly.Plugin._
 import spray.revolver.RevolverPlugin.Revolver
+import com.typesafe.sbt.osgi.{SbtOsgi, OsgiKeys}
+import com.typesafe.sbt.osgi.SbtOsgi._
 
 object BuildSettings {
   val VERSION = "1.2-M8"
@@ -42,17 +44,18 @@ object BuildSettings {
       // publishing
       crossPaths := false,
       publishMavenStyle := true,
-      publishTo <<= version { version =>
-        Some {
-          "spray nexus" at {
-            // public uri is repo.spray.io, we use an SSH tunnel to the nexus here
-            "http://localhost:42424/content/repositories/" + {
-              if (version.trim.endsWith("SNAPSHOT")) "snapshots/" else
-                if (NightlyBuildSupport.isNightly) "nightlies/" else "releases/"
-            }
-          }
-        }
-      }
+//      publishTo <<= version { version =>
+//        Some {
+//          "spray nexus" at {
+//            // public uri is repo.spray.io, we use an SSH tunnel to the nexus here
+//            "http://localhost:42424/content/repositories/" + {
+//              if (version.trim.endsWith("SNAPSHOT")) "snapshots/" else
+//                if (NightlyBuildSupport.isNightly) "nightlies/" else "releases/"
+//            }
+//          }
+//        }
+//      }
+      publishTo := Some(Resolver.file("file",  new File(Path.userHome.absolutePath+"/.m2/repository")))
     )
 
   lazy val noPublishing = seq(
@@ -116,5 +119,27 @@ object BuildSettings {
       .setPreference(AlignParameters, true)
       .setPreference(AlignSingleLineCaseStatements, true)
       .setPreference(DoubleIndentClassDeclaration, true)
+
+  def osgiSettings(exports: Seq[String], imports: Seq[String] = Seq.empty) =
+    SbtOsgi.osgiSettings ++ Seq(
+      OsgiKeys.exportPackage := exports map {
+        pkg => pkg + ".*;version=\"${Bundle-Version}\""
+      },
+      OsgiKeys.importPackage <<= scalaVersion {
+        sv => Seq( """scala.*;version="$<range;[==,=+);%s>"""".format(sv))
+      },
+      OsgiKeys.importPackage ++= imports,
+      OsgiKeys.importPackage += "akka.io.*;version=\"${Bundle-Version}\"",
+      OsgiKeys.importPackage += "akka.spray.*;version=\"${Bundle-Version}\"",
+      OsgiKeys.importPackage += "akka.testkit.*;version=\"${Bundle-Version}\";resolution:=\"optional\"",
+      OsgiKeys.importPackage += "javax.servlet.*;resolution:=\"optional\"",
+      OsgiKeys.importPackage += "net.liftweb.json.*;resolution:=\"optional\"",
+      OsgiKeys.importPackage += "org.json4s.*;resolution:=\"optional\"",
+      OsgiKeys.importPackage += "org.scalatest.*;resolution:=\"optional\"",
+      OsgiKeys.importPackage += "org.specs2.*;resolution:=\"optional\"",
+      OsgiKeys.importPackage += "twirl.api.*;resolution:=\"optional\"",
+      OsgiKeys.importPackage += "*",
+      OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package")
+    )
 
 }
