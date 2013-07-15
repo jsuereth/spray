@@ -94,15 +94,16 @@ object Build extends Build {
     .settings(noPublishing: _*)
     .settings(libraryDependencies ++= test(akkaActor, akkaTestKit, specs2, scalatest))
 
+  lazy val osgiBundledProjects: Seq[Project] = Seq(sprayCaching, sprayCan, sprayClient, sprayHttp, sprayHttpx, sprayIO, sprayRouting, sprayServlet, sprayTestKit, sprayUtil)
+  
   lazy val sprayOsgi = Project("spray-osgi", file("spray-osgi"))
-    .dependsOn(sprayCaching, sprayCan, sprayClient, sprayHttp, sprayHttpx, sprayIO, sprayRouting, sprayServlet, sprayTestKit, sprayUtil)
-
-//    Which of these three lines are correct (if any) to just simply run the SprayReferenceCopyAction during the build?
-    .settings(sprayModuleSettings ++ seq(SprayReferenceCopyTask in Compile <<= SprayReferenceCopyAction): _*)
-    .settings(compile in Compile <<= compile in Compile dependsOn (SprayReferenceCopyTask in Compile): _*)
-    .settings(seq(copyResources in Compile <<=  Seq(SprayReferenceCopyTask, SprayReferenceCopyAction)): _*)
-
-
+    .dependsOn(osgiBundledProjects.map(_.project: ClasspathDep[ProjectReference]):_*)
+    .settings(sprayModuleSettings: _*)
+    .settings(
+      ActorOsgiConfigurationReference <<= ActorOsgiConfigurationReferenceAction(osgiBundledProjects),
+      ActorMakeOsgiConfiguration <<= (ActorOsgiConfigurationReference, resourceManaged in Compile, streams) map makeOsgiConfigurationFiles,
+      resourceGenerators in Compile <+= ActorMakeOsgiConfiguration
+    )
     .settings(osgiSettings(exports = Seq("akka.spray", "spray.caching", "spray.can", "spray.client", "spray.http", "spray.httpx", "spray.io", "spray.osgi", "spray.routing", "spray.servlet", "spray.testkit", "spray.util")): _*)
     .settings(libraryDependencies ++= compile(osgiCore, akkaSlf4j, akkaOsgi, tsConfig))
 
@@ -288,34 +289,51 @@ object Build extends Build {
   // Configuration copy tasks
   // -------------------------------------------------------------------------------------------------------------------
 
-  val SprayReferenceCopyTask = TaskKey[Int]("hello", "Copy reference.conf from spray modules to spray-osgi")
+  lazy val ActorMakeOsgiConfiguration = TaskKey[Seq[File]]("actor-make-osgi-configuration", "Copy reference.conf from akka modules for akka-osgi")
+  lazy val ActorOsgiConfigurationReference = TaskKey[Seq[(File, String)]]("actor-osgi-configuration-reference", "The list of all configuration files to be bundled in an osgi bundle, as well as project name.")
 
-  val SprayReferenceCopyAction = (streams) map {
-    (s) =>
-      s.log.debug("Copying of the spray-routing reference.conf to spray-osgi")
-      (file("spray-osgi/src/main/resources")).mkdir()
-      if ((file("spray-osgi/src/main/resources/reference.conf")).exists) {
-        (file("spray-osgi/src/main/resources/reference.conf")).delete()
+  import Project.Initialize
+  /** This method uses a bit of advanced sbt initailizers to grab the normalized names and resource directories
+   * from a set of projects, and then use this to create a mapping of (reference.conf to project name).
+   */
+  def ActorOsgiConfigurationReferenceAction(projects: Seq[Project]): Initialize[Task[Seq[(File, String)]]] = {
+    val directories: Initialize[Seq[File]] = projects.map(resourceDirectory in Compile in _).join
+    val names: Initialize[Seq[String]] = projects.map(normalizedName in _).join
+    directories zip names map { case (dirs, ns) =>
+        for {
+          (dir, project) <- dirs zip ns
+          val conf = dir / "reference.conf"
+          if conf.exists
+        } yield conf -> project
       }
-      val projectReferencesToCopy = for (project <- projects.filter(p => !p.id.contains("test") && !p.id.contains("sample"))
-                                         if (file(project.base + "/src/main/resources/reference.conf")).exists()) yield project
-
-      val referencesFileToInclude = projectReferencesToCopy.map(project => {
-        copyFile(project.base + "/src/main/resources/reference.conf", "spray-osgi/src/main/resources/" + project.id + ".conf")
-        "include \"" + project.id + ".conf\""
-      })
-
-      val writer = new PrintWriter(file("spray-osgi/src/main/resources/reference.conf"))
-      writer.write(referencesFileToInclude.mkString("\n"))
-      writer.close()
-      s.log.info("Spray module reference.conf copied in spray-osgi")
-      projects.size
   }
-
-  def copyFile(source: String, sink: String) {
-    val src = new java.io.File(source)
-    val dest = new java.io.File(sink)
-    new java.io.FileOutputStream(dest).getChannel.transferFrom(
-      new java.io.FileInputStream(src).getChannel, 0, Long.MaxValue)
+  /** This method is repsonsible for genreating a new typeasafe config reference.conf file for OSGi.
+   * it copies all the files in the `includes` parameter, using the associated project name.  Then
+   * it generates a new resource.conf file which includes these files.
+   *
+   * @param target  The location where we write the new files
+   * @param includes A sequnece of (<reference.conf>, <project name>) pairs.
+   */
+  def makeOsgiConfigurationFiles(includes: Seq[(File, String)], target: File, streams: TaskStreams): Seq[File] = {
+    // First we copy all the files to their destination
+    val toCopy =
+      for {
+        (file, project) <- includes
+        val toFile = target / (project + ".conf")
+      } yield file -> toFile
+    IO.copy(toCopy)
+    val copiedResourceFileLocations = toCopy.map(_._2)
+    streams.log.debug("Copied OSGi resources: " + copiedResourceFileLocations.mkString("\n\t", "\n\t", "\n"))
+    // Now we generate the new including conf file
+    val newConf = target / "resource.conf"
+    val confIncludes =
+      for {
+        (file, project) <- includes
+      } yield "include \""+ project +".conf\""
+    val writer = new PrintWriter(newConf)
+    try writer.write(confIncludes mkString "\n")
+    finally writer.close()
+    streams.log.info("Copied OSGi resources.")
+    newConf +: copiedResourceFileLocations
   }
 }
