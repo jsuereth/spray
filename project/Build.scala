@@ -309,7 +309,7 @@ object Build extends Build {
   }
   /** This method is repsonsible for genreating a new typeasafe config reference.conf file for OSGi.
    * it copies all the files in the `includes` parameter, using the associated project name.  Then
-   * it generates a new resource.conf file which includes these files.
+   * it generates a new reference.conf file which includes these files.
    *
    * @param target  The location where we write the new files
    * @param includes A sequnece of (<reference.conf>, <project name>) pairs.
@@ -325,7 +325,7 @@ object Build extends Build {
     val copiedResourceFileLocations = toCopy.map(_._2)
     streams.log.debug("Copied OSGi resources: " + copiedResourceFileLocations.mkString("\n\t", "\n\t", "\n"))
     // Now we generate the new including conf file
-    val newConf = target / "resource.conf"
+    val newConf = target / "reference.conf"
     val confIncludes =
       for {
         (file, project) <- includes

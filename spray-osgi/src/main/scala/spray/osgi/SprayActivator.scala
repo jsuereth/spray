@@ -37,6 +37,7 @@ abstract class SprayActivator extends ActorSystemActivator {
     super.stop(context)
   }
 
-  override def getActorSystemConfiguration(context: BundleContext): Config =
-    ConfigFactory.load(context.getBundle.getClass.getClassLoader)
+  override def getActorSystemConfiguration(context: BundleContext): Config = {
+    ConfigFactory.load(classOf[SprayActivator].getClassLoader).withFallback(super.getActorSystemConfiguration(context))
+  }
 }
